@@ -1,5 +1,7 @@
 import React, {useState, useCallback} from 'react';
-import {Form, Field, FormSpy} from 'react-final-form';
+import {Form, Field, FormSpy, useForm, useField, useFormState} from 'react-final-form';
+import useToggle from './useToggle';
+import {addToTracker, removeFromTracker} from './useTracker';
 
 const myData = [
   {id: 1, name: 'a'},
@@ -9,14 +11,7 @@ const myData = [
 ];
 window.myData = myData;
 
-const useToggle = (initialValue) => {
-  const [state, setState] = useState(initialValue);
-  const toggle = useCallback(value => {
-      setState(currentState => value === true || value === false ? value : !currentState);
-    },
-    [setState]);
-  return [state, toggle];
-};
+
 
 const InvitePopup = ({open, closePopup}) => {
   console.log('3.InvitePopup is render');
@@ -30,14 +25,23 @@ const InvitePopup = ({open, closePopup}) => {
 
 let version = 0;
 
-const MyList = ({value, change}) => {
+const MyList = ({value, change, mutators}) => {
   console.log('2.My List is render');
   const data = value || [];
   const onClick = (e) => {
     const id = Number(e.target.dataset.id);
     const idx = data.findIndex((a) => a.id === id);
     if (idx > -1) {
-      change(`rowData.${idx}.isCheck`, !data[idx].isCheck);
+      const item  = data[idx];
+      const currentlyChecked = item.isCheck;
+      if(currentlyChecked) {
+        change(`rowData.${idx}`, {id: item.id, name: item.name});
+        mutators.removeFromTracker(`tracker`, item);
+      } else {
+        change(`rowData.${idx}.isCheck`, true);
+        mutators.addToTracker(`tracker`, item);
+      }
+
     }
   };
   const list = data.map(({id, name, isCheck}, idx) => (
@@ -48,55 +52,53 @@ const MyList = ({value, change}) => {
 
 };
 
-const MySmartForm = ({formOptions}) => {
+const MySmartForm = () => {
+  const {mutators, change} = useForm();
+  const {input: {value}} = useField('rowData', {value: true});
+  const [invitePopupOpen, toggleInvitePopup] = useToggle(false);
 
+  return <div>
+    <MyList value={value} change={change} mutators={mutators}/>
+    <InvitePopup open={invitePopupOpen} closePopup={toggleInvitePopup}/>
+    <MyFooter toggleInvitePopup={toggleInvitePopup}/>
+  </div>
+};
+
+const MyFooter = ({toggleInvitePopup}) => {
+  console.log('4.MyFooter is render');
+  const {reset, getState} = useForm();
+  const {dirty} = getState();
+  const resetClick = () => reset();
+
+  return (<div className="footer-form">
+    <button disabled={!dirty} onClick={resetClick}>Reset</button>
+    <button disabled={!dirty} onClick={toggleInvitePopup}>Submit</button>
+  </div>);
 };
 
 const Main = () => {
   console.log('1.Main is render');
-  const [invitePopupOpen, toggleInvitePopup] = useToggle(false);
+
   const onSubmit = (data) => {
     console.log('submit', data);
-    toggleInvitePopup();
   };
 
   const formOptions = {
     initialValues: {rowData: myData, version: version++},
+    tracker: undefined,
     onSubmit,
+    mutators: {addToTracker, removeFromTracker},
     subscription: {dirty: true}
   };
 
   return (<div>
     <h1>Hello</h1>
-    {/*<InvitePopup
-            open={invitePopupOpen}
-            closePopup={toggleInvitePopup}
-        />
-        <button onClick={toggleInvitePopup}>Invite Popup</button>*/}
     <Form {...formOptions}
           render={({form}) => {
             window.myForm = form;
             return (
               <section>
-                <Field name="rowData" subscription={{value: true}}>
-                  {({input}) => {
-                    return <MyList value={input.value} change={form.change}/>;
-                  }}
-
-                </Field>
-
-                <InvitePopup
-                  open={invitePopupOpen}
-                  closePopup={toggleInvitePopup}/>
-
-                <FormSpy subscription={{dirty: true}}>
-                  {props => (
-                    <div className="footer-form">
-                      <button onClick={form.reset}>Reset</button>
-                      <button disabled={!props.dirty} onClick={toggleInvitePopup}>Submit</button>
-                    </div>
-                  )}
-                </FormSpy>
+                <MySmartForm change={form.change}/>
               </section>
             );
           }}
